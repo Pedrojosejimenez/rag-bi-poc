@@ -1,0 +1,2 @@
+{'question': '¿Cuál es el tema principal del documento sample.md?', 'expected_contains': 'POC'}
+{'question': 'Resume el PDF de ejemplo en dos frases.', 'expected_contains': 'ejemplo'}

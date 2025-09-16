@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.streamlit/
+
+# Artefactos RAG/BI regenerables
+data/processed/
+data/qdrant/
+chunks.parquet
+*.faiss
+*.pkl
+
+# SO/editores
+.DS_Store
+Thumbs.db
+.vscode/
