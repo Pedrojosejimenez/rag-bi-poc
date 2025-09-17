@@ -1,124 +1,235 @@
-# POC RAG + Business Intelligence (100 % local y gratuito)
+# POC RAG + BI 100 % local y gratuita (Windows, WSL y Linux)
 
-Esta prueba de concepto combina **RAG** sobre documentos locales con un **dashboard de BI** en Streamlit y una **API HTTP** con FastAPI. Todo se ejecuta en tu equipo sin claves de pago.
+Esta prueba de concepto integra **RAG** sobre documentos locales (PDF, MD, TXT) con un **dashboard de Business Intelligence** y una **API HTTP**. Todo se ejecuta en local, sin claves de pago, con componentes 100 % libres. Incluye un **agente de enrutado** que decide si responder con BI, con RAG o con ambos, y un **modo fallback** sin LLM generativo para asegurar funcionamiento en cualquier equipo.
 
-## Arquitectura
+---
 
-[PDF/MD/TXT] --> Ingesta -> Chunking -> Embeddings -> Vector Store (FAISS|Qdrant)
-|
-v
-Pipeline RAG ----> (Ollama LLM) -> Respuesta con citas
-| ^
-v |
-FastAPI /ask endpoint Fallback modo "stub"
-|
-v
-Streamlit Dashboard (KPIs + RAG)
+## Novedades operativas de esta versión
 
+- Importaciones compatibles con Streamlit: se usan **imports absolutos** `from src...` y ficheros `__init__.py` en `src/`, `src/app/`, `src/rag/`, `src/bi/` y `src/agent/`.
+- Ejecución como **módulo** (`python -m ...`) para evitar errores de importación.
+- API con redirección opcional **`/ → /docs`** para evitar 404 en la raíz.
+- Nueva ruta **`POST /agent_ask`** y pestaña **Agente** en Streamlit para respuestas combinadas BI + RAG.
+- Guía precisa para **PowerShell** y fijación de **UTF-8** para evitar problemas de acentuación.
+
+---
+
+## Estructura
+
+rag_bi_poc/
+README.md
+LICENSE
+.env.example
+requirements.txt
+docker-compose.yml
+Makefile
+.gitignore
+src/
+init.py
+app/
+init.py
+server.py # incluye redirección / -> /docs y registro del agente si existe
+routes_rag.py
+routes_agent.py # expone POST /agent_ask
+rag/
+init.py
+ingest.py
+chunk.py
+embeddings.py
+vectorstore.py
+pipeline.py
+bi/
+init.py
+load_data.py
+dashboard.py # pestaña “Agente” y imports absolutos
+agent/
+init.py
+router.py # heurística BI/RAG/both
+sql_exec.py # plantillas SQL seguras en DuckDB
+orchestrator.py # orquesta BI + RAG y compone respuesta
+data/
+raw/
+processed/
+examples/
+tests/
+conftest.py
+test_rag.py
+test_bi.py
+
+yaml
+Copiar código
+
+---
 
 ## Requisitos
 
-- Python 3.11 (Windows, Linux, WSL).
-- **Opcional**: Docker si usas Qdrant.
-- **Opcional**: [Ollama](https://ollama.com) y un modelo gratuito (`ollama pull llama3` o `ollama pull mistral`).
+- **Python 3.11**.
+- **Git** y **Visual Studio Code**.
+- Opcional RAG generativo: **Ollama** con un modelo gratuito (`llama3` o `mistral`).
+- Opcional vector store en servicio: **Docker Desktop** para Qdrant.
+
+---
 
 ## Instalación
 
-```bash
-python -m venv venv
-# Linux/macOS
-source venv/bin/activate
-# Windows
-# venv\Scripts\activate
+En **PowerShell**:
 
-pip install --upgrade pip
+```powershell
+# 1) Ubícate en la carpeta del proyecto
+cd "<ruta a tu proyecto>\rag-bi-poc"
+
+# 2) Entorno virtual
+py -3.11 -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Si PowerShell bloquea scripts, ejecuta una vez:
+# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-Copia .env.example a .env si quieres cambiar opciones. Por defecto usamos FAISS y GENERATOR_MODE=ollama. Si no tienes Ollama, pon GENERATOR_MODE=stub.
+# 3) Asegura inicializadores de paquete
+ni src\__init__.py -ItemType File -Force
+ni src\app\__init__.py -ItemType File -Force
+ni src\rag\__init__.py -ItemType File -Force
+ni src\bi\__init__.py -ItemType File -Force
+ni src\agent\__init__.py -ItemType File -Force
+Configuración
+Copia .env.example a .env. Valores útiles:
+
+ini
+Copiar código
+RAG_BACKEND=faiss
+EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
+GENERATOR_MODE=stub        # usa “ollama” si tienes Ollama activo
+OLLAMA_MODEL=llama3
+DATA_DIR=./data
+PROCESSED_DIR=./data/processed
+CHUNK_TARGET_TOKENS=700
+CHUNK_OVERLAP_TOKENS=120
+Si no usarás Ollama, deja GENERATOR_MODE=stub.
 
 Ingesta de documentos
+Coloca PDF/MD/TXT en data/raw/. Ejecuta:
 
-Coloca tus PDF/MD/TXT en data/raw/. Incluimos sample.md. Ejecuta:
+powershell
+Copiar código
+# Importante: ejecutar como módulo para resolver imports
+python -m src.rag.ingest
+Se crearán los artefactos en data/processed/ (FAISS) o se enviarán a Qdrant si lo habilitas en .env.
 
-python src/rag/ingest.py
+Arranque de la API
+Usa dos terminales para trabajar cómodo.
 
+Consola A:
 
-Esto crea data/processed/faiss.index y faiss_meta.pkl o envía los vectores a Qdrant si activas ese backend.
+powershell
+Copiar código
+cd "<ruta a tu proyecto>\rag-bi-poc"
+.\venv\Scripts\Activate.ps1
+$env:PYTHONPATH="$PWD"
+python -m uvicorn src.app.server:app --host 127.0.0.1 --port 8000
+Verificación rápida:
 
-Usar Qdrant (opcional)
-docker-compose up -d
-# y en .env:
-# RAG_BACKEND=qdrant
+Salud: http://127.0.0.1:8000/health
 
-API HTTP (FastAPI)
+Documentación: http://127.0.0.1:8000/docs
 
-Arranque:
+Probar endpoints desde PowerShell
+Antes de enviar texto con acentos, fija UTF-8:
 
-uvicorn src.app.server:app --reload
+powershell
+Copiar código
+[Console]::InputEncoding  = [System.Text.UTF8Encoding]::new()
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+Luego:
 
+powershell
+Copiar código
+# /ask
+$payload = [PSCustomObject]@{ query = '¿Qué contiene el documento de ejemplo?'; top_k = 5 }
+$json = $payload | ConvertTo-Json -Depth 5 -Compress
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/ask' -Method POST -Body $json -ContentType 'application/json; charset=utf-8'
 
-Prueba:
+# /agent_ask
+$payload = [PSCustomObject]@{ query = 'Ventas por región y, según documentos, política de devoluciones'; top_k = 5 }
+$json = $payload | ConvertTo-Json -Depth 5 -Compress
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/agent_ask' -Method POST -Body $json -ContentType 'application/json; charset=utf-8'
+Alternativa con curl.exe real:
 
-curl -X POST http://127.0.0.1:8000/ask -H "Content-Type: application/json" \
-  -d '{"query":"¿Qué contiene el documento de ejemplo?","top_k":5}'
+powershell
+Copiar código
+curl.exe -s -X POST "http://127.0.0.1:8000/ask" -H "Content-Type: application/json; charset=utf-8" -d "{\"query\":\"¿Qué contiene el documento de ejemplo?\",\"top_k\":5}"
+Dashboard Streamlit
+Consola B:
 
-Dashboard BI (Streamlit)
+powershell
+Copiar código
+cd "<ruta a tu proyecto>\rag-bi-poc"
+.\venv\Scripts\Activate.ps1
+$env:PYTHONPATH="$PWD"
 streamlit run src/bi/dashboard.py
-
-
 Pestañas:
 
-Ventas: KPIs y series temporales.
+Ventas: KPIs y series temporales con DuckDB.
 
-Soporte: métricas de tickets y tiempos.
+Soporte: tickets, prioridad y tiempos.
 
-RAG: formulario para consultar vía API o local.
+RAG: preguntas a /ask o pipeline local.
 
-Modelos y costes
+Agente: formulario a /agent_ask que devuelve respuesta combinada, tabla BI y citas RAG si existen.
 
-Embeddings: all-MiniLM-L6-v2 (gratuito).
+LLM local con Ollama (opcional)
+powershell
+Copiar código
+# en otra consola
+ollama pull llama3
 
-Generación: Ollama con llama3 o mistral (gratuitos). Si no lo tienes, usa GENERATOR_MODE=stub, que ofrece respuesta extractiva sin LLM.
+# en .env
+# GENERATOR_MODE=ollama
+# OLLAMA_MODEL=llama3
 
-Subir a GitHub
-git init
-git add .
-git commit -m "POC RAG+BI 100% local"
-git branch -M main
-git remote add origin https://github.com/<tu_usuario>/rag_bi_poc.git
-git push -u origin main
-
-Resolución de errores comunes
-
-Ollama no responde: pon GENERATOR_MODE=stub en .env o arranca ollama serve y ollama pull llama3.
-
-FAISS en Windows: este repo fija faiss-cpu==1.8.0.post1, compatible en Python 3.11. Asegúrate de tener pip actualizado.
-
-Qdrant puerto en uso: cambia puertos en docker-compose.yml.
-
-Sin documentos: coloca archivos en data/raw y relanza ingest.py.
-
+# reinicia Uvicorn
+Qdrant opcional (Docker)
+powershell
+Copiar código
+docker-compose up -d
+# en .env:
+# RAG_BACKEND=qdrant
+python -m src.rag.ingest
 Tests
+powershell
+Copiar código
+# Evitar dependencia de LLM en tests
+$env:GENERATOR_MODE="stub"
+pytest -q
+Solución de problemas
+ImportError: attempted relative import with no known parent package
+Ejecutar como módulo: python -m src.rag.ingest. Asegurar __init__.py en src/*.
 
-Ejecuta:
+404 en /
+Normal si no hay ruta raíz. Usar /health o /docs. Redirección opcional en server.py:
 
-make test
-# o
-GENERATOR_MODE=stub pytest -q
+python
+Copiar código
+@app.get("/")
+def root():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/docs")
+400 “There was an error parsing the body”
+En PowerShell convertir objetos a JSON con ConvertTo-Json y enviar -ContentType 'application/json'. No pegar comentarios # ni >> junto a los comandos.
 
-Estructura de carpetas
-src/
-  rag/      # Ingesta, chunking, embeddings, vector store, pipeline
-  app/      # FastAPI + rutas
-  bi/       # Datos de ejemplo y dashboard Streamlit
-data/
-  raw/      # Tus documentos
-  processed/# Índices y artefactos
-  examples/ # CSV de demo + golden questions
+“No es posible conectar con el servidor remoto”
+Uvicorn apagado o puerto distinto. Mantener la consola A encendida. Verificar con:
 
-Licencia
+powershell
+Copiar código
+netstat -ano | findstr :8000
+Acentos corruptos (mojibake)
+Fijar UTF-8 en consola como arriba.
 
-MIT.
+Aviso de torch.classes
+Benigno. Si molesta: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.3.1.
 
 
 ---
